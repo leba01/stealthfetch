@@ -83,8 +83,9 @@ class TestThreshold:
         assert looks_blocked(html) is True
 
     def test_large_page_with_challenge_platform_not_blocked(self) -> None:
-        """challenge-platform is passive CF JS on real pages — not a block signal on large pages."""
-        html = "<html><head><script src='/cdn-cgi/challenge-platform/scripts/jsd/main.js'></script></head><body>" + ("x" * 20_000) + "</body></html>"
+        """challenge-platform is passive CF JS — not a block signal on large pages."""
+        script = "<script src='/cdn-cgi/challenge-platform/scripts/jsd/main.js'></script>"
+        html = f"<html><head>{script}</head><body>" + ("x" * 20_000) + "</body></html>"
         assert looks_blocked(html) is False
 
     def test_reddit_challenge_blocked(self, reddit_challenge_html: str) -> None:

@@ -20,4 +20,5 @@ def pytest_collection_modifyitems(
     if not config.getoption("--run-integration"):
         skip = pytest.mark.skip(reason="need --run-integration to run")
         for item in items:
-            item.add_marker(skip)
+            if item.path and "integration" in item.path.parts:
+                item.add_marker(skip)

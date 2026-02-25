@@ -103,7 +103,9 @@ class TestMCPHeadersParsing:
         assert mock_afetch.call_args.kwargs["headers"] is None
 
     async def test_invalid_headers_json_raises(self) -> None:
-        with pytest.raises(Exception):
+        import json
+
+        with pytest.raises(json.JSONDecodeError):
             await _MCP_TOOL("https://example.com", headers_json="not-json")
 
     async def test_headers_json_list_raises(self) -> None:
