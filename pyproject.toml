@@ -85,3 +85,10 @@ module = [
     "mcp.*",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "stealthfetch._browsers._camoufox",
+    "stealthfetch._browsers._patchright",
+]
+warn_unused_ignores = false
