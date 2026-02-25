@@ -156,7 +156,6 @@ Also available as `afetch_markdown` — same signature, async. Extraction and co
 | `proxy` | `dict` | `None` | `{"server": "...", "username": "...", "password": "..."}` |
 | `headers` | `dict` | `None` | Additional HTTP headers |
 
-`afetch_markdown` has the same signature.
 
 ### `fetch_result(url, **kwargs) -> FetchResult`
 
