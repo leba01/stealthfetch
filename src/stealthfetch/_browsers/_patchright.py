@@ -21,7 +21,7 @@ def fetch(
     logger.debug("Patchright sync fetch: %s", url)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, proxy=build_proxy(proxy))
+        browser = p.chromium.launch(headless=True, proxy=build_proxy(proxy))  # type: ignore[arg-type]
         try:
             page = browser.new_page()
             page.set_default_timeout(timeout * 1000)
@@ -49,7 +49,7 @@ async def afetch(
     logger.debug("Patchright async fetch: %s", url)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, proxy=build_proxy(proxy))
+        browser = await p.chromium.launch(headless=True, proxy=build_proxy(proxy))  # type: ignore[arg-type]
         try:
             page = await browser.new_page()
             page.set_default_timeout(timeout * 1000)

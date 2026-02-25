@@ -21,7 +21,7 @@ def fetch(
     logger.debug("Camoufox sync fetch: %s", url)
     camoufox_proxy = build_proxy(proxy)
 
-    with Camoufox(
+    with Camoufox(  # type: ignore[no-untyped-call]
         headless=True,
         proxy=camoufox_proxy,
         geoip=bool(proxy),
@@ -50,7 +50,7 @@ async def afetch(
     logger.debug("Camoufox async fetch: %s", url)
     camoufox_proxy = build_proxy(proxy)
 
-    async with AsyncCamoufox(
+    async with AsyncCamoufox(  # type: ignore[no-untyped-call]
         headless=True,
         proxy=camoufox_proxy,
         geoip=bool(proxy),
