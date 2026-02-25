@@ -7,7 +7,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from stealthfetch._core import afetch_markdown, fetch_markdown
+from stealthfetch._core import (
+    FetchResult,
+    afetch_markdown,
+    afetch_result,
+    fetch_markdown,
+    fetch_result,
+)
 from stealthfetch._errors import FetchError
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -31,6 +37,49 @@ def _mock_http_fail(url: str, **kwargs: object) -> tuple[str, int, str]:
 
 async def _amock_http_ok(url: str, **kwargs: object) -> tuple[str, int, str]:
     return _ARTICLE_HTML, 200, "text/html"
+
+
+class TestFetchResultPipeline:
+    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_ok)
+    def test_returns_fetch_result_instance(self, mock_fetch: object) -> None:
+        result = fetch_result("https://example.com/article", method="http")
+        assert isinstance(result, FetchResult)
+
+    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_ok)
+    def test_markdown_field_contains_content(self, mock_fetch: object) -> None:
+        result = fetch_result("https://example.com/article", method="http")
+        assert "jellyfish" in result.markdown
+        assert "Mariana Trench" in result.markdown
+        assert "<html>" not in result.markdown
+
+    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_ok)
+    def test_title_field_extracted(self, mock_fetch: object) -> None:
+        result = fetch_result("https://example.com/article", method="http")
+        assert result.title is not None
+        assert isinstance(result.title, str)
+
+    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_ok)
+    def test_metadata_fields_are_str_or_none(self, mock_fetch: object) -> None:
+        result = fetch_result("https://example.com/article", method="http")
+        for field in ("title", "author", "date", "description", "url", "hostname", "sitename"):
+            value = getattr(result, field)
+            assert value is None or isinstance(value, str), f"{field} has unexpected type"
+
+    @pytest.mark.asyncio
+    @patch("stealthfetch._core._afetch_http", new_callable=AsyncMock)
+    async def test_afetch_result_returns_fetch_result(self, mock_fetch: AsyncMock) -> None:
+        mock_fetch.return_value = (_ARTICLE_HTML, 200, "text/html")
+        result = await afetch_result("https://example.com/article", method="http")
+        assert isinstance(result, FetchResult)
+        assert "jellyfish" in result.markdown
+
+    @pytest.mark.asyncio
+    @patch("stealthfetch._core._afetch_http", new_callable=AsyncMock)
+    async def test_afetch_result_metadata_fields(self, mock_fetch: AsyncMock) -> None:
+        mock_fetch.return_value = (_ARTICLE_HTML, 200, "text/html")
+        result = await afetch_result("https://example.com/article", method="http")
+        assert result.title is not None
+        assert isinstance(result.title, str)
 
 
 class TestFetchMarkdownPipeline:

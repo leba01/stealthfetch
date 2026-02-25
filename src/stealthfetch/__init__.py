@@ -2,7 +2,13 @@
 
 from importlib.metadata import version
 
-from stealthfetch._core import afetch_markdown, fetch_markdown
+from stealthfetch._core import (
+    FetchResult,
+    afetch_markdown,
+    afetch_result,
+    fetch_markdown,
+    fetch_result,
+)
 from stealthfetch._errors import (
     BrowserNotAvailable,
     ExtractionError,
@@ -16,8 +22,11 @@ __all__ = [
     "BrowserNotAvailable",
     "ExtractionError",
     "FetchError",
+    "FetchResult",
     "StealthFetchError",
     "__version__",
     "afetch_markdown",
+    "afetch_result",
     "fetch_markdown",
+    "fetch_result",
 ]

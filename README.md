@@ -158,6 +158,37 @@ Also available as `afetch_markdown` — same signature, async. Extraction and co
 
 `afetch_markdown` has the same signature.
 
+### `fetch_result(url, **kwargs) -> FetchResult`
+
+Same fetch/extract/convert pipeline as `fetch_markdown`, but returns a structured dataclass with the markdown **and** page metadata extracted as a free side-effect of parsing.
+
+```python
+from stealthfetch import fetch_result
+
+r = fetch_result("https://en.wikipedia.org/wiki/Web_scraping", method="http")
+print(r.title)       # "Web scraping"
+print(r.author)      # "Wikipedia contributors" (when available)
+print(r.date)        # ISO 8601 date (when available)
+print(r.markdown[:200])
+```
+
+`FetchResult` fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `markdown` | `str` | Cleaned markdown content |
+| `title` | `str \| None` | Page title |
+| `author` | `str \| None` | Author name |
+| `date` | `str \| None` | Publication date (ISO 8601 when available) |
+| `description` | `str \| None` | Meta description |
+| `url` | `str \| None` | Canonical URL (may differ from input) |
+| `hostname` | `str \| None` | Hostname |
+| `sitename` | `str \| None` | Publisher name |
+
+To get a plain dict: `dataclasses.asdict(result)`.
+
+`afetch_result` has the same signature, async.
+
 ## Optional Dependencies
 
 | Extra | What it adds |

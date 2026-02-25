@@ -118,6 +118,51 @@ class TestMCPHeadersParsing:
 
 
 @pytest.mark.asyncio
+class TestMCPMetadata:
+    """include_metadata=True should call afetch_result and return JSON."""
+
+    @patch("stealthfetch._core.afetch_result", new_callable=AsyncMock)
+    async def test_include_metadata_true_returns_json(self, mock_afetch_result: AsyncMock) -> None:
+        import json
+
+        from stealthfetch._core import FetchResult
+
+        mock_afetch_result.return_value = FetchResult(
+            markdown="# Title\n\nContent.",
+            title="Test Title",
+            author="Jane Smith",
+            date="2026-01-15",
+            description=None,
+            url="https://example.com/article",
+            hostname="example.com",
+            sitename=None,
+        )
+        result = await _MCP_TOOL("https://example.com/article", include_metadata=True)
+        parsed = json.loads(result)
+        assert parsed["markdown"] == "# Title\n\nContent."
+        assert parsed["title"] == "Test Title"
+        assert parsed["author"] == "Jane Smith"
+        assert parsed["date"] == "2026-01-15"
+        assert parsed["hostname"] == "example.com"
+
+    @patch("stealthfetch._core.afetch_markdown", new_callable=AsyncMock)
+    async def test_include_metadata_false_calls_afetch_markdown(
+        self, mock_afetch: AsyncMock
+    ) -> None:
+        mock_afetch.return_value = "# Title"
+        result = await _MCP_TOOL("https://example.com", include_metadata=False)
+        assert result == "# Title"
+        mock_afetch.assert_called_once()
+
+    @patch("stealthfetch._core.afetch_markdown", new_callable=AsyncMock)
+    async def test_default_calls_afetch_markdown(self, mock_afetch: AsyncMock) -> None:
+        mock_afetch.return_value = "# Title"
+        result = await _MCP_TOOL("https://example.com")
+        assert result == "# Title"
+        mock_afetch.assert_called_once()
+
+
+@pytest.mark.asyncio
 class TestMCPProxyAssembly:
     """Flat proxy_server/username/password params should be assembled into a proxy dict."""
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 
 from stealthfetch._compat import has_camoufox, has_patchright
 from stealthfetch._detect import looks_blocked
@@ -19,6 +20,20 @@ logger = logging.getLogger(__name__)
 _VALID_METHODS = frozenset({"auto", "http", "browser"})
 _VALID_BACKENDS = frozenset({"auto", "camoufox", "patchright"})
 _MAX_RESPONSE_BYTES = 50_000_000  # 50 MB
+
+
+@dataclass
+class FetchResult:
+    """Structured result containing markdown and page metadata."""
+
+    markdown: str
+    title: str | None
+    author: str | None
+    date: str | None
+    description: str | None
+    url: str | None
+    hostname: str | None
+    sitename: str | None
 
 
 # --- Layer 1: Fetch ---
@@ -247,6 +262,25 @@ def _extract_content(
     return str(result)
 
 
+def _extract_metadata(html: str, *, url: str = "") -> dict[str, str | None]:
+    """Extract page metadata via trafilatura."""
+    from trafilatura import extract_metadata
+
+    doc = extract_metadata(html, url or None)
+    if doc is None:
+        keys = ("title", "author", "date", "description", "url", "hostname", "sitename")
+        return dict.fromkeys(keys)
+    return {
+        "title": doc.title,
+        "author": doc.author,
+        "date": doc.date,
+        "description": doc.description,
+        "url": doc.url,
+        "hostname": doc.hostname,
+        "sitename": doc.sitename,
+    }
+
+
 # --- Layer 3: Convert ---
 
 
@@ -360,3 +394,125 @@ async def afetch_markdown(
         raise ExtractionError(url, reason="conversion produced empty markdown")
 
     return markdown
+
+
+def fetch_result(
+    url: str,
+    *,
+    method: str = "auto",
+    browser_backend: str = "auto",
+    include_links: bool = True,
+    include_images: bool = False,
+    include_tables: bool = True,
+    timeout: int = 30,
+    proxy: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+) -> FetchResult:
+    """Fetch a URL and return structured result with markdown and page metadata.
+
+    Args:
+        url: The URL to fetch.
+        method: Fetch method. "auto" tries HTTP first, escalates to browser
+                on failure. "http" forces curl_cffi. "browser" forces browser.
+        browser_backend: "auto", "camoufox", or "patchright". Only used when
+                browser mode is triggered.
+        include_links: Preserve hyperlinks in markdown output.
+        include_images: Preserve image references in markdown output.
+        include_tables: Preserve tables in markdown output.
+        timeout: Request timeout in seconds.
+        proxy: Proxy config dict {"server": str, "username": str, "password": str}.
+        headers: Additional HTTP headers (merged with impersonation defaults).
+
+    Returns:
+        FetchResult with markdown content and metadata fields (title, author,
+        date, description, url, hostname, sitename).
+
+    Raises:
+        FetchError: If the page cannot be fetched after all methods exhausted.
+        ExtractionError: If no main content can be extracted from the HTML.
+        ValueError: If url, method, browser_backend, or proxy are invalid.
+    """
+    _validate_params(url, method, browser_backend, proxy)
+
+    raw_html = _fetch(
+        url,
+        method=method,
+        browser_backend=browser_backend,
+        timeout=timeout,
+        proxy=proxy,
+        headers=headers,
+    )
+    clean_html = _extract_content(
+        raw_html,
+        include_links=include_links,
+        include_images=include_images,
+        include_tables=include_tables,
+        url=url,
+    )
+    markdown = _to_markdown(clean_html).strip()
+
+    if not markdown:
+        raise ExtractionError(url, reason="conversion produced empty markdown")
+
+    meta = _extract_metadata(raw_html, url=url)
+    return FetchResult(
+        markdown=markdown,
+        title=meta["title"],
+        author=meta["author"],
+        date=meta["date"],
+        description=meta["description"],
+        url=meta["url"],
+        hostname=meta["hostname"],
+        sitename=meta["sitename"],
+    )
+
+
+async def afetch_result(
+    url: str,
+    *,
+    method: str = "auto",
+    browser_backend: str = "auto",
+    include_links: bool = True,
+    include_images: bool = False,
+    include_tables: bool = True,
+    timeout: int = 30,
+    proxy: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+) -> FetchResult:
+    """Async version of fetch_result. Same signature and behavior."""
+    _validate_params(url, method, browser_backend, proxy)
+
+    raw_html = await _afetch(
+        url,
+        method=method,
+        browser_backend=browser_backend,
+        timeout=timeout,
+        proxy=proxy,
+        headers=headers,
+    )
+
+    # Run CPU-bound extract + convert off the event loop
+    clean_html = await asyncio.to_thread(
+        _extract_content,
+        raw_html,
+        include_links=include_links,
+        include_images=include_images,
+        include_tables=include_tables,
+        url=url,
+    )
+    markdown = (await asyncio.to_thread(_to_markdown, clean_html)).strip()
+
+    if not markdown:
+        raise ExtractionError(url, reason="conversion produced empty markdown")
+
+    meta = await asyncio.to_thread(_extract_metadata, raw_html, url=url)
+    return FetchResult(
+        markdown=markdown,
+        title=meta["title"],
+        author=meta["author"],
+        date=meta["date"],
+        description=meta["description"],
+        url=meta["url"],
+        hostname=meta["hostname"],
+        sitename=meta["sitename"],
+    )

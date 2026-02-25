@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 (2026-02-24)
+
+- Add `fetch_result()` / `afetch_result()` — same pipeline as `fetch_markdown`, returns `FetchResult` dataclass with `markdown` + metadata fields (`title`, `author`, `date`, `description`, `url`, `hostname`, `sitename`) extracted as a free side-effect of trafilatura parsing
+- Add `FetchResult` dataclass, exported from the top-level package
+- MCP server: add `include_metadata` parameter to `fetch_markdown` tool — when `True`, returns JSON with markdown and metadata instead of plain string
+
 ## 0.1.0 (2026-02-24)
 
 Initial release.

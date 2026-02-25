@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "stealthfetch"
-version = "0.1.0"
+version = "0.2.0"
 description = "URL in, LLM-ready markdown out. Stealth fetch with anti-bot bypass."
 readme = "README.md"
 license = "MIT"
