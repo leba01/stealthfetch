@@ -11,7 +11,13 @@ def main() -> None:
 
     mcp = FastMCP(
         "stealthfetch",
-        instructions="Fetch any URL and return LLM-ready markdown.",
+        instructions=(
+            "Fetch any web page and return clean, LLM-ready markdown. "
+            "Handles anti-bot protection (Cloudflare, DataDome, PerimeterX, Akamai) "
+            "by auto-escalating from HTTP to a stealth browser. Built-in SSRF protection. "
+            "Use for scraping websites, reading web pages, or fetching URLs that block "
+            "normal HTTP requests."
+        ),
     )
 
     @mcp.tool()  # type: ignore[untyped-decorator]
@@ -29,26 +35,31 @@ def main() -> None:
         proxy_password: str = "",
         include_metadata: bool = False,
     ) -> str:
-        """Fetch a URL and return clean, LLM-ready markdown.
+        """Fetch a web page and return clean, LLM-ready markdown. Strips nav, ads, \
+and boilerplate. Auto-escalates to a stealth browser if the site blocks normal \
+HTTP requests (Cloudflare, DataDome, PerimeterX, Akamai). SSRF-safe.
 
         Args:
             url: The URL to fetch.
-            method: "auto" (try HTTP, escalate to browser), "http", or "browser".
-            browser_backend: "auto", "camoufox", or "patchright".
+            method: "auto" (try HTTP, escalate to stealth browser on block),
+                "http" (curl_cffi only), or "browser" (stealth browser — use for
+                JS-heavy SPAs that render content client-side).
+            browser_backend: "auto" (prefers camoufox), "camoufox" (stealth
+                Firefox), or "patchright" (stealth Chromium).
             include_links: Preserve hyperlinks in output.
             include_images: Preserve image references in output.
             include_tables: Preserve tables in output.
             timeout: Request timeout in seconds.
-            headers_json: Additional HTTP headers as a JSON string (e.g. '{"Cookie": "x=1"}').
-            proxy_server: Proxy server URL (e.g. "http://proxy:8080").
+            headers_json: Additional HTTP headers as JSON string, e.g. '{"Cookie": "x=1"}'.
+            proxy_server: Proxy server URL, e.g. "http://proxy:8080".
             proxy_username: Proxy username (optional).
             proxy_password: Proxy password (optional).
-            include_metadata: When True, return a JSON object with markdown and
-                page metadata (title, author, date, description, url, hostname,
-                sitename). When False (default), return plain markdown string.
+            include_metadata: When True, returns JSON with markdown + page
+                metadata (title, author, date, description, url, hostname,
+                sitename). When False (default), returns plain markdown.
 
         Returns:
-            Plain markdown string, or JSON object with markdown + metadata when
+            Plain markdown string, or JSON with markdown + metadata when
             include_metadata is True.
         """
         headers: dict[str, str] | None = None
