@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "stealthfetch": {
+      "command": "stealthfetch-mcp"
+    }
+  }
+}
