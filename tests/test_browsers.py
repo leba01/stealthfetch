@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -18,16 +18,12 @@ class TestResolveBackend:
 
     @patch("stealthfetch._compat.has_camoufox", return_value=False)
     @patch("stealthfetch._compat.has_patchright", return_value=True)
-    def test_auto_falls_back_to_patchright(
-        self, mock_pr: object, mock_cf: object
-    ) -> None:
+    def test_auto_falls_back_to_patchright(self, mock_pr: object, mock_cf: object) -> None:
         assert _resolve_backend("auto") == "patchright"
 
     @patch("stealthfetch._compat.has_camoufox", return_value=False)
     @patch("stealthfetch._compat.has_patchright", return_value=False)
-    def test_auto_raises_when_none_available(
-        self, mock_pr: object, mock_cf: object
-    ) -> None:
+    def test_auto_raises_when_none_available(self, mock_pr: object, mock_cf: object) -> None:
         with pytest.raises(BrowserNotAvailable):
             _resolve_backend("auto")
 
@@ -57,11 +53,13 @@ class TestBuildProxy:
         assert result == {"server": "http://proxy:8080"}
 
     def test_with_credentials(self) -> None:
-        result = build_proxy({
-            "server": "http://proxy:8080",
-            "username": "user",
-            "password": "pass",
-        })
+        result = build_proxy(
+            {
+                "server": "http://proxy:8080",
+                "username": "user",
+                "password": "pass",
+            }
+        )
         assert result == {
             "server": "http://proxy:8080",
             "username": "user",
@@ -80,10 +78,76 @@ class TestFetchBrowserDispatch:
 
     @patch("stealthfetch._compat.has_patchright", return_value=True)
     @patch("stealthfetch._browsers._patchright.fetch", return_value="<html>ok</html>")
-    def test_fetch_browser_patchright(
-        self, mock_fetch: object, mock_has: object
-    ) -> None:
+    def test_fetch_browser_patchright(self, mock_fetch: object, mock_has: object) -> None:
         from stealthfetch._browsers import fetch_browser
 
         result = fetch_browser("https://example.com", backend="patchright")
         assert result == "<html>ok</html>"
+
+
+class TestBrowserHeadersPassthrough:
+    """Verify headers param flows from fetch_browser → backend."""
+
+    @patch("stealthfetch._compat.has_patchright", return_value=True)
+    @patch("stealthfetch._browsers._patchright.fetch")
+    def test_fetch_browser_passes_headers_to_patchright(
+        self, mock_pfetch: MagicMock, mock_has: object
+    ) -> None:
+        from stealthfetch._browsers import fetch_browser
+
+        headers = {"Authorization": "Bearer abc"}
+        fetch_browser("https://example.com", backend="patchright", headers=headers)
+        mock_pfetch.assert_called_once_with(
+            "https://example.com", timeout=30, proxy=None, headers=headers
+        )
+
+    @patch("stealthfetch._compat.has_camoufox", return_value=True)
+    @patch("stealthfetch._browsers._camoufox.fetch")
+    def test_fetch_browser_passes_headers_to_camoufox(
+        self, mock_cfetch: MagicMock, mock_has: object
+    ) -> None:
+        from stealthfetch._browsers import fetch_browser
+
+        headers = {"X-Custom": "value"}
+        fetch_browser("https://example.com", backend="camoufox", headers=headers)
+        mock_cfetch.assert_called_once_with(
+            "https://example.com", timeout=30, proxy=None, headers=headers
+        )
+
+    @pytest.mark.asyncio
+    @patch("stealthfetch._compat.has_patchright", return_value=True)
+    @patch("stealthfetch._browsers._patchright.afetch", new_callable=AsyncMock)
+    async def test_afetch_browser_passes_headers_to_patchright(
+        self, mock_pafetch: AsyncMock, mock_has: object
+    ) -> None:
+        from stealthfetch._browsers import afetch_browser
+
+        headers = {"Authorization": "Bearer xyz"}
+        await afetch_browser("https://example.com", backend="patchright", headers=headers)
+        mock_pafetch.assert_awaited_once_with(
+            "https://example.com", timeout=30, proxy=None, headers=headers
+        )
+
+    @pytest.mark.asyncio
+    @patch("stealthfetch._compat.has_camoufox", return_value=True)
+    @patch("stealthfetch._browsers._camoufox.afetch", new_callable=AsyncMock)
+    async def test_afetch_browser_passes_headers_to_camoufox(
+        self, mock_cafetch: AsyncMock, mock_has: object
+    ) -> None:
+        from stealthfetch._browsers import afetch_browser
+
+        headers = {"X-Custom": "async-value"}
+        await afetch_browser("https://example.com", backend="camoufox", headers=headers)
+        mock_cafetch.assert_awaited_once_with(
+            "https://example.com", timeout=30, proxy=None, headers=headers
+        )
+
+    @patch("stealthfetch._compat.has_patchright", return_value=True)
+    @patch("stealthfetch._browsers._patchright.fetch")
+    def test_none_headers_passed_through(self, mock_pfetch: MagicMock, mock_has: object) -> None:
+        from stealthfetch._browsers import fetch_browser
+
+        fetch_browser("https://example.com", backend="patchright")
+        mock_pfetch.assert_called_once_with(
+            "https://example.com", timeout=30, proxy=None, headers=None
+        )

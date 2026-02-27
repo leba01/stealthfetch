@@ -14,6 +14,7 @@ def fetch(
     *,
     timeout: int = 30,
     proxy: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> str:
     """Fetch a URL with Camoufox stealth browser (sync)."""
     from camoufox.sync_api import Camoufox
@@ -30,6 +31,8 @@ def fetch(
     ) as browser:
         page = browser.new_page()
         page.set_default_timeout(timeout * 1000)
+        if headers:
+            page.set_extra_http_headers(headers)
         page.goto(url, wait_until="domcontentloaded")
         try:
             page.wait_for_function(BODY_READY_JS, timeout=BODY_READY_TIMEOUT)
@@ -43,6 +46,7 @@ async def afetch(
     *,
     timeout: int = 30,
     proxy: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> str:
     """Fetch a URL with Camoufox stealth browser (async)."""
     from camoufox.async_api import AsyncCamoufox
@@ -59,6 +63,8 @@ async def afetch(
     ) as browser:
         page = await browser.new_page()
         page.set_default_timeout(timeout * 1000)
+        if headers:
+            await page.set_extra_http_headers(headers)
         await page.goto(url, wait_until="domcontentloaded")
         try:
             await page.wait_for_function(BODY_READY_JS, timeout=BODY_READY_TIMEOUT)

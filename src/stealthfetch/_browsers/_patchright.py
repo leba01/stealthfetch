@@ -14,6 +14,7 @@ def fetch(
     *,
     timeout: int = 30,
     proxy: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> str:
     """Fetch a URL with Patchright stealth browser (sync)."""
     from patchright.sync_api import sync_playwright
@@ -25,13 +26,13 @@ def fetch(
         try:
             page = browser.new_page()
             page.set_default_timeout(timeout * 1000)
+            if headers:
+                page.set_extra_http_headers(headers)
             page.goto(url, wait_until="domcontentloaded")
             try:
                 page.wait_for_function(BODY_READY_JS, timeout=BODY_READY_TIMEOUT)
             except Exception:
-                logger.debug(
-                    "Body readiness check timed out, continuing with current content"
-                )
+                logger.debug("Body readiness check timed out, continuing with current content")
             return str(page.content())
         finally:
             browser.close()
@@ -42,6 +43,7 @@ async def afetch(
     *,
     timeout: int = 30,
     proxy: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> str:
     """Fetch a URL with Patchright stealth browser (async)."""
     from patchright.async_api import async_playwright
@@ -53,13 +55,13 @@ async def afetch(
         try:
             page = await browser.new_page()
             page.set_default_timeout(timeout * 1000)
+            if headers:
+                await page.set_extra_http_headers(headers)
             await page.goto(url, wait_until="domcontentloaded")
             try:
                 await page.wait_for_function(BODY_READY_JS, timeout=BODY_READY_TIMEOUT)
             except Exception:
-                logger.debug(
-                    "Body readiness check timed out, continuing with current content"
-                )
+                logger.debug("Body readiness check timed out, continuing with current content")
             return str(await page.content())
         finally:
             await browser.close()
