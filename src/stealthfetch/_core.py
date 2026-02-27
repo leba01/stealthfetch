@@ -61,10 +61,26 @@ def _validate_params(
 
 
 def _build_curl_proxies(proxy: dict[str, str] | None) -> dict[str, str] | None:
-    """Convert our proxy dict to curl_cffi's proxies format."""
+    """Convert our proxy dict to curl_cffi's proxies format.
+
+    curl_cffi expects credentials embedded in the URL (http://user:pass@host:port),
+    unlike Playwright which takes them as separate fields.
+    """
     if not proxy:
         return None
-    return {"https": proxy["server"], "http": proxy["server"]}
+    server = proxy["server"]
+    if "username" in proxy:
+        from urllib.parse import urlparse, urlunparse
+
+        parsed = urlparse(server)
+        userinfo = proxy["username"]
+        if "password" in proxy:
+            userinfo += f":{proxy['password']}"
+        netloc = f"{userinfo}@{parsed.hostname}"
+        if parsed.port:
+            netloc += f":{parsed.port}"
+        server = urlunparse(parsed._replace(netloc=netloc))
+    return {"https": server, "http": server}
 
 
 def _fetch_http(
@@ -128,8 +144,11 @@ async def _afetch_http(
             raise FetchError(url, reason=str(exc)) from exc
         if len(r.content) > _MAX_RESPONSE_BYTES:
             raise FetchError(url, reason=f"Response too large ({len(r.content)} bytes)")
-    content_type: str = r.headers.get("content-type", "text/html")
-    return str(r.text), int(r.status_code), content_type
+        # Extract response data while session is still alive
+        content_type: str = r.headers.get("content-type", "text/html")
+        text = str(r.text)
+        status_code = int(r.status_code)
+    return text, status_code, content_type
 
 
 def _has_any_browser() -> bool:
@@ -149,7 +168,9 @@ def _fetch(
     from stealthfetch._browsers import fetch_browser
 
     if method == "browser":
-        return fetch_browser(url, backend=browser_backend, timeout=timeout, proxy=proxy)
+        return fetch_browser(
+            url, backend=browser_backend, timeout=timeout, proxy=proxy, headers=headers
+        )
 
     if method == "http":
         html, status_code, _ = _fetch_http(url, timeout=timeout, proxy=proxy, headers=headers)
@@ -166,13 +187,17 @@ def _fetch(
         logger.debug("HTTP fetch failed: %s", exc)
         if _has_any_browser():
             logger.info("Escalating to browser after HTTP failure")
-            return fetch_browser(url, backend=browser_backend, timeout=timeout, proxy=proxy)
+            return fetch_browser(
+                url, backend=browser_backend, timeout=timeout, proxy=proxy, headers=headers
+            )
         raise FetchError(url, reason=str(exc)) from exc
 
     if looks_blocked(html, status_code=status_code, content_type=content_type):
         if _has_any_browser():
             logger.info("Response looks blocked, escalating to browser")
-            return fetch_browser(url, backend=browser_backend, timeout=timeout, proxy=proxy)
+            return fetch_browser(
+                url, backend=browser_backend, timeout=timeout, proxy=proxy, headers=headers
+            )
         logger.warning(
             "Response looks blocked but no browser backend installed. "
             "Install with: pip install 'stealthfetch[browser]'"
@@ -194,7 +219,9 @@ async def _afetch(
     from stealthfetch._browsers import afetch_browser
 
     if method == "browser":
-        return await afetch_browser(url, backend=browser_backend, timeout=timeout, proxy=proxy)
+        return await afetch_browser(
+            url, backend=browser_backend, timeout=timeout, proxy=proxy, headers=headers
+        )
 
     if method == "http":
         html, status_code, _ = await _afetch_http(
@@ -214,7 +241,7 @@ async def _afetch(
         if _has_any_browser():
             logger.info("Escalating to browser after HTTP failure")
             return await afetch_browser(
-                url, backend=browser_backend, timeout=timeout, proxy=proxy
+                url, backend=browser_backend, timeout=timeout, proxy=proxy, headers=headers
             )
         raise FetchError(url, reason=str(exc)) from exc
 
@@ -222,7 +249,7 @@ async def _afetch(
         if _has_any_browser():
             logger.info("Response looks blocked, escalating to browser")
             return await afetch_browser(
-                url, backend=browser_backend, timeout=timeout, proxy=proxy
+                url, backend=browser_backend, timeout=timeout, proxy=proxy, headers=headers
             )
         logger.warning(
             "Response looks blocked but no browser backend installed. "
