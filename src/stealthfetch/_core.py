@@ -22,7 +22,7 @@ _VALID_BACKENDS = frozenset({"auto", "camoufox", "patchright"})
 _MAX_RESPONSE_BYTES = 50_000_000  # 50 MB
 
 
-@dataclass
+@dataclass(frozen=True)
 class FetchResult:
     """Structured result containing markdown and page metadata."""
 
@@ -83,40 +83,6 @@ def _build_curl_proxies(proxy: dict[str, str] | None) -> dict[str, str] | None:
     return {"https": server, "http": server}
 
 
-def _fetch_http(
-    url: str,
-    *,
-    timeout: int = 30,
-    proxy: dict[str, str] | None = None,
-    headers: dict[str, str] | None = None,
-) -> tuple[str, int, str]:
-    """Fetch via curl_cffi with Chrome TLS fingerprint.
-
-    Returns:
-        (html, status_code, content_type) tuple.
-    """
-    from curl_cffi import requests as curl_requests
-
-    proxies = _build_curl_proxies(proxy)
-
-    r = curl_requests.get(
-        url,
-        impersonate="chrome",
-        timeout=timeout,
-        proxies=proxies,  # type: ignore[arg-type]
-        headers=headers,
-    )
-    # Validate final URL after redirects to prevent SSRF via 302
-    try:
-        validate_url(str(r.url))
-    except ValueError as exc:
-        raise FetchError(url, reason=str(exc)) from exc
-    if len(r.content) > _MAX_RESPONSE_BYTES:
-        raise FetchError(url, reason=f"Response too large ({len(r.content)} bytes)")
-    content_type: str = r.headers.get("content-type", "text/html")
-    return str(r.text), int(r.status_code), content_type
-
-
 async def _afetch_http(
     url: str,
     *,
@@ -155,55 +121,17 @@ def _has_any_browser() -> bool:
     return has_camoufox() or has_patchright()
 
 
-def _fetch(
-    url: str,
-    *,
-    method: str = "auto",
-    browser_backend: str = "auto",
-    timeout: int = 30,
-    proxy: dict[str, str] | None = None,
-    headers: dict[str, str] | None = None,
-) -> str:
-    """Fetch HTML with auto-escalation (sync)."""
-    from stealthfetch._browsers import fetch_browser
-
-    if method == "browser":
-        return fetch_browser(
-            url, backend=browser_backend, timeout=timeout, proxy=proxy, headers=headers
-        )
-
-    if method == "http":
-        html, status_code, _ = _fetch_http(url, timeout=timeout, proxy=proxy, headers=headers)
-        if status_code >= 400:
-            raise FetchError(url, reason=f"HTTP {status_code}")
-        return html
-
-    # auto: try HTTP first, escalate to browser if blocked
-    try:
-        html, status_code, content_type = _fetch_http(
-            url, timeout=timeout, proxy=proxy, headers=headers
-        )
-    except Exception as exc:
-        logger.debug("HTTP fetch failed: %s", exc)
-        if _has_any_browser():
-            logger.info("Escalating to browser after HTTP failure")
-            return fetch_browser(
-                url, backend=browser_backend, timeout=timeout, proxy=proxy, headers=headers
-            )
-        raise FetchError(url, reason=str(exc)) from exc
-
-    if looks_blocked(html, status_code=status_code, content_type=content_type):
-        if _has_any_browser():
-            logger.info("Response looks blocked, escalating to browser")
-            return fetch_browser(
-                url, backend=browser_backend, timeout=timeout, proxy=proxy, headers=headers
-            )
-        logger.warning(
-            "Response looks blocked but no browser backend installed. "
-            "Install with: pip install 'stealthfetch[browser]'"
-        )
-
-    return html
+def _is_transient(exc: Exception) -> bool:
+    """Return True if the exception represents a transient/retryable failure."""
+    if isinstance(exc, FetchError):
+        reason = str(exc)
+        # 5xx = transient server error; 4xx = client error, don't retry
+        if "HTTP 5" in reason:
+            return True
+        # 4xx = client error, not transient; everything else (connection etc.) is
+        return "HTTP 4" not in reason
+    # Raw connection errors, timeouts
+    return isinstance(exc, (ConnectionError, TimeoutError, OSError))
 
 
 async def _afetch(
@@ -214,8 +142,9 @@ async def _afetch(
     timeout: int = 30,
     proxy: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,
+    retries: int = 0,
 ) -> str:
-    """Fetch HTML with auto-escalation (async)."""
+    """Fetch HTML with auto-escalation (async, canonical implementation)."""
     from stealthfetch._browsers import afetch_browser
 
     if method == "browser":
@@ -257,6 +186,56 @@ async def _afetch(
         )
 
     return html
+
+
+async def _afetch_with_retry(
+    url: str,
+    *,
+    method: str = "auto",
+    browser_backend: str = "auto",
+    timeout: int = 30,
+    proxy: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+    retries: int = 0,
+) -> str:
+    """Wrap _afetch with exponential backoff retry on transient failures."""
+    last_exc: Exception | None = None
+    for attempt in range(1 + retries):
+        try:
+            return await _afetch(
+                url, method=method, browser_backend=browser_backend,
+                timeout=timeout, proxy=proxy, headers=headers,
+            )
+        except Exception as exc:  # noqa: PERF203
+            last_exc = exc
+            if attempt < retries and _is_transient(exc):
+                delay = 2**attempt  # 1s, 2s, 4s, ...
+                logger.info(
+                    "Retry %d/%d after %ds (error: %s)", attempt + 1, retries, delay, exc
+                )
+                await asyncio.sleep(delay)
+            else:
+                raise
+    raise last_exc  # type: ignore[misc]  # unreachable, satisfies mypy
+
+
+def _fetch(
+    url: str,
+    *,
+    method: str = "auto",
+    browser_backend: str = "auto",
+    timeout: int = 30,
+    proxy: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+    retries: int = 0,
+) -> str:
+    """Fetch HTML with auto-escalation (sync wrapper around _afetch)."""
+    return asyncio.run(
+        _afetch_with_retry(
+            url, method=method, browser_backend=browser_backend,
+            timeout=timeout, proxy=proxy, headers=headers, retries=retries,
+        )
+    )
 
 
 # --- Layer 2: Extract ---
@@ -319,6 +298,59 @@ def _to_markdown(html: str) -> str:
     return convert(html, options)
 
 
+# --- Pipeline helpers ---
+
+
+def _pipeline(
+    raw_html: str,
+    url: str,
+    *,
+    include_links: bool = True,
+    include_images: bool = False,
+    include_tables: bool = True,
+) -> str:
+    """Run extract→convert pipeline, return markdown."""
+    clean_html = _extract_content(
+        raw_html,
+        include_links=include_links,
+        include_images=include_images,
+        include_tables=include_tables,
+        url=url,
+    )
+    markdown = _to_markdown(clean_html).strip()
+    if not markdown:
+        raise ExtractionError(url, reason="conversion produced empty markdown")
+    return markdown
+
+
+def _pipeline_result(
+    raw_html: str,
+    url: str,
+    *,
+    include_links: bool = True,
+    include_images: bool = False,
+    include_tables: bool = True,
+) -> FetchResult:
+    """Run extract→convert pipeline, return FetchResult with metadata."""
+    markdown = _pipeline(
+        raw_html, url,
+        include_links=include_links,
+        include_images=include_images,
+        include_tables=include_tables,
+    )
+    meta = _extract_metadata(raw_html, url=url)
+    return FetchResult(
+        markdown=markdown,
+        title=meta["title"],
+        author=meta["author"],
+        date=meta["date"],
+        description=meta["description"],
+        url=meta["url"],
+        hostname=meta["hostname"],
+        sitename=meta["sitename"],
+    )
+
+
 # --- Public API ---
 
 
@@ -333,6 +365,7 @@ def fetch_markdown(
     timeout: int = 30,
     proxy: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,
+    retries: int = 0,
 ) -> str:
     """Fetch a URL and return clean, LLM-ready markdown.
 
@@ -348,6 +381,8 @@ def fetch_markdown(
         timeout: Request timeout in seconds.
         proxy: Proxy config dict {"server": str, "username": str, "password": str}.
         headers: Additional HTTP headers (merged with impersonation defaults).
+        retries: Number of retries on transient failures (5xx, timeouts,
+                connection errors) with exponential backoff. Default 0 (no retry).
 
     Returns:
         Clean markdown string of the page's main content.
@@ -358,28 +393,15 @@ def fetch_markdown(
         ValueError: If url, method, browser_backend, or proxy are invalid.
     """
     _validate_params(url, method, browser_backend, proxy)
-
     raw_html = _fetch(
-        url,
-        method=method,
-        browser_backend=browser_backend,
-        timeout=timeout,
-        proxy=proxy,
-        headers=headers,
+        url, method=method, browser_backend=browser_backend,
+        timeout=timeout, proxy=proxy, headers=headers, retries=retries,
     )
-    clean_html = _extract_content(
-        raw_html,
-        include_links=include_links,
-        include_images=include_images,
+    return _pipeline(
+        raw_html, url,
+        include_links=include_links, include_images=include_images,
         include_tables=include_tables,
-        url=url,
     )
-    markdown = _to_markdown(clean_html).strip()
-
-    if not markdown:
-        raise ExtractionError(url, reason="conversion produced empty markdown")
-
-    return markdown
 
 
 async def afetch_markdown(
@@ -393,34 +415,19 @@ async def afetch_markdown(
     timeout: int = 30,
     proxy: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,
+    retries: int = 0,
 ) -> str:
     """Async version of fetch_markdown. Same signature and behavior."""
     _validate_params(url, method, browser_backend, proxy)
-
-    raw_html = await _afetch(
-        url,
-        method=method,
-        browser_backend=browser_backend,
-        timeout=timeout,
-        proxy=proxy,
-        headers=headers,
+    raw_html = await _afetch_with_retry(
+        url, method=method, browser_backend=browser_backend,
+        timeout=timeout, proxy=proxy, headers=headers, retries=retries,
     )
-
-    # Run CPU-bound extract + convert off the event loop
-    clean_html = await asyncio.to_thread(
-        _extract_content,
-        raw_html,
-        include_links=include_links,
-        include_images=include_images,
+    return await asyncio.to_thread(
+        _pipeline, raw_html, url,
+        include_links=include_links, include_images=include_images,
         include_tables=include_tables,
-        url=url,
     )
-    markdown = (await asyncio.to_thread(_to_markdown, clean_html)).strip()
-
-    if not markdown:
-        raise ExtractionError(url, reason="conversion produced empty markdown")
-
-    return markdown
 
 
 def fetch_result(
@@ -434,63 +441,18 @@ def fetch_result(
     timeout: int = 30,
     proxy: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,
+    retries: int = 0,
 ) -> FetchResult:
-    """Fetch a URL and return structured result with markdown and page metadata.
-
-    Args:
-        url: The URL to fetch.
-        method: Fetch method. "auto" tries HTTP first, escalates to browser
-                on failure. "http" forces curl_cffi. "browser" forces browser.
-        browser_backend: "auto", "camoufox", or "patchright". Only used when
-                browser mode is triggered.
-        include_links: Preserve hyperlinks in markdown output.
-        include_images: Preserve image references in markdown output.
-        include_tables: Preserve tables in markdown output.
-        timeout: Request timeout in seconds.
-        proxy: Proxy config dict {"server": str, "username": str, "password": str}.
-        headers: Additional HTTP headers (merged with impersonation defaults).
-
-    Returns:
-        FetchResult with markdown content and metadata fields (title, author,
-        date, description, url, hostname, sitename).
-
-    Raises:
-        FetchError: If the page cannot be fetched after all methods exhausted.
-        ExtractionError: If no main content can be extracted from the HTML.
-        ValueError: If url, method, browser_backend, or proxy are invalid.
-    """
+    """Like fetch_markdown, but returns FetchResult with markdown + page metadata."""
     _validate_params(url, method, browser_backend, proxy)
-
     raw_html = _fetch(
-        url,
-        method=method,
-        browser_backend=browser_backend,
-        timeout=timeout,
-        proxy=proxy,
-        headers=headers,
+        url, method=method, browser_backend=browser_backend,
+        timeout=timeout, proxy=proxy, headers=headers, retries=retries,
     )
-    clean_html = _extract_content(
-        raw_html,
-        include_links=include_links,
-        include_images=include_images,
+    return _pipeline_result(
+        raw_html, url,
+        include_links=include_links, include_images=include_images,
         include_tables=include_tables,
-        url=url,
-    )
-    markdown = _to_markdown(clean_html).strip()
-
-    if not markdown:
-        raise ExtractionError(url, reason="conversion produced empty markdown")
-
-    meta = _extract_metadata(raw_html, url=url)
-    return FetchResult(
-        markdown=markdown,
-        title=meta["title"],
-        author=meta["author"],
-        date=meta["date"],
-        description=meta["description"],
-        url=meta["url"],
-        hostname=meta["hostname"],
-        sitename=meta["sitename"],
     )
 
 
@@ -505,41 +467,16 @@ async def afetch_result(
     timeout: int = 30,
     proxy: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,
+    retries: int = 0,
 ) -> FetchResult:
     """Async version of fetch_result. Same signature and behavior."""
     _validate_params(url, method, browser_backend, proxy)
-
-    raw_html = await _afetch(
-        url,
-        method=method,
-        browser_backend=browser_backend,
-        timeout=timeout,
-        proxy=proxy,
-        headers=headers,
+    raw_html = await _afetch_with_retry(
+        url, method=method, browser_backend=browser_backend,
+        timeout=timeout, proxy=proxy, headers=headers, retries=retries,
     )
-
-    # Run CPU-bound extract + convert off the event loop
-    clean_html = await asyncio.to_thread(
-        _extract_content,
-        raw_html,
-        include_links=include_links,
-        include_images=include_images,
+    return await asyncio.to_thread(
+        _pipeline_result, raw_html, url,
+        include_links=include_links, include_images=include_images,
         include_tables=include_tables,
-        url=url,
-    )
-    markdown = (await asyncio.to_thread(_to_markdown, clean_html)).strip()
-
-    if not markdown:
-        raise ExtractionError(url, reason="conversion produced empty markdown")
-
-    meta = await asyncio.to_thread(_extract_metadata, raw_html, url=url)
-    return FetchResult(
-        markdown=markdown,
-        title=meta["title"],
-        author=meta["author"],
-        date=meta["date"],
-        description=meta["description"],
-        url=meta["url"],
-        hostname=meta["hostname"],
-        sitename=meta["sitename"],
     )
