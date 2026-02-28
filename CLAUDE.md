@@ -37,7 +37,7 @@ Key modules:
 ## Commands
 
 ```bash
-pytest                       # unit tests (99 tests)
+pytest                       # unit tests (156 tests)
 pytest --run-integration     # + live HTTP tests
 ruff check src/ tests/       # lint
 mypy src/                    # type check

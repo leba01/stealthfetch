@@ -89,6 +89,8 @@ Install as a library:
 pip install stealthfetch
 ```
 
+> **Note:** trafilatura brings ~20 transitive dependencies (lxml, charset-normalizer, etc.). Total install is ~50 packages.
+
 Add stealth browser support (necessary for escalation logic):
 
 ```bash

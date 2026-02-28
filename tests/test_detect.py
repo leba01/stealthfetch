@@ -9,18 +9,43 @@ from stealthfetch._detect import looks_blocked
 
 class TestStatusCodes:
     @pytest.mark.parametrize(
-        ("status_code", "expected"),
-        [
-            (403, True),
-            (429, True),
-            (503, True),
-            (200, False),
-            (301, False),
-        ],
+        "status_code",
+        [403, 429, 503],
+        ids=["403", "429", "503"],
     )
-    def test_status_code_detection(self, status_code: int, expected: bool) -> None:
+    def test_status_code_alone_not_blocked(self, status_code: int) -> None:
+        """Status codes without anti-bot content patterns are not treated as blocked."""
         html = "<html><body>Some content</body></html>"
-        assert looks_blocked(html, status_code=status_code) is expected
+        assert looks_blocked(html, status_code=status_code) is False
+
+    @pytest.mark.parametrize(
+        "status_code",
+        [403, 429, 503],
+        ids=["403", "429", "503"],
+    )
+    def test_status_code_with_pattern_blocked(self, status_code: int) -> None:
+        """Status code + anti-bot content pattern = blocked."""
+        html = "<html><body>Access Denied - security check required</body></html>"
+        assert looks_blocked(html, status_code=status_code) is True
+
+    @pytest.mark.parametrize(
+        "status_code",
+        [200, 301],
+        ids=["200", "301"],
+    )
+    def test_non_blocked_status_codes(self, status_code: int) -> None:
+        html = "<html><body>Some content</body></html>"
+        assert looks_blocked(html, status_code=status_code) is False
+
+    def test_403_with_large_page_weak_pattern_blocked(self) -> None:
+        """403 + weak pattern on large page = blocked (status elevates weak patterns)."""
+        html = "<html><body>" + ("x" * 20_000) + " access denied </body></html>"
+        assert looks_blocked(html, status_code=403) is True
+
+    def test_403_with_large_page_no_pattern_not_blocked(self) -> None:
+        """403 on large page with no anti-bot pattern = not blocked (real auth denial)."""
+        html = "<html><body>" + ("x" * 20_000) + "</body></html>"
+        assert looks_blocked(html, status_code=403) is False
 
 
 class TestContentType:

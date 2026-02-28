@@ -19,48 +19,45 @@ from stealthfetch._errors import FetchError
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 _ARTICLE_HTML = (FIXTURES_DIR / "article.html").read_text()
+_BLOCKED_HTML = (FIXTURES_DIR / "cloudflare_block.html").read_text()
 
 
-def _mock_http_ok(url: str, **kwargs: object) -> tuple[str, int, str]:
-    """Return article fixture as a successful HTTP response."""
-    return _ARTICLE_HTML, 200, "text/html"
+def _make_afetch_ok() -> AsyncMock:
+    mock = AsyncMock(return_value=(_ARTICLE_HTML, 200, "text/html"))
+    return mock
 
 
-def _mock_http_blocked(url: str, **kwargs: object) -> tuple[str, int, str]:
-    """Return cloudflare block page."""
-    html = (FIXTURES_DIR / "cloudflare_block.html").read_text()
-    return html, 403, "text/html"
+def _make_afetch_blocked() -> AsyncMock:
+    mock = AsyncMock(return_value=(_BLOCKED_HTML, 403, "text/html"))
+    return mock
 
 
-def _mock_http_fail(url: str, **kwargs: object) -> tuple[str, int, str]:
-    raise ConnectionError("Connection refused")
-
-
-async def _amock_http_ok(url: str, **kwargs: object) -> tuple[str, int, str]:
-    return _ARTICLE_HTML, 200, "text/html"
+def _make_afetch_fail() -> AsyncMock:
+    mock = AsyncMock(side_effect=ConnectionError("Connection refused"))
+    return mock
 
 
 class TestFetchResultPipeline:
-    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_ok)
-    def test_returns_fetch_result_instance(self, mock_fetch: object) -> None:
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_ok)
+    def test_returns_fetch_result_instance(self, mock_fetch: AsyncMock) -> None:
         result = fetch_result("https://example.com/article", method="http")
         assert isinstance(result, FetchResult)
 
-    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_ok)
-    def test_markdown_field_contains_content(self, mock_fetch: object) -> None:
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_ok)
+    def test_markdown_field_contains_content(self, mock_fetch: AsyncMock) -> None:
         result = fetch_result("https://example.com/article", method="http")
         assert "jellyfish" in result.markdown
         assert "Mariana Trench" in result.markdown
         assert "<html>" not in result.markdown
 
-    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_ok)
-    def test_title_field_extracted(self, mock_fetch: object) -> None:
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_ok)
+    def test_title_field_extracted(self, mock_fetch: AsyncMock) -> None:
         result = fetch_result("https://example.com/article", method="http")
         assert result.title is not None
         assert isinstance(result.title, str)
 
-    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_ok)
-    def test_metadata_fields_are_str_or_none(self, mock_fetch: object) -> None:
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_ok)
+    def test_metadata_fields_are_str_or_none(self, mock_fetch: AsyncMock) -> None:
         result = fetch_result("https://example.com/article", method="http")
         for field in ("title", "author", "date", "description", "url", "hostname", "sitename"):
             value = getattr(result, field)
@@ -84,8 +81,8 @@ class TestFetchResultPipeline:
 
 
 class TestFetchMarkdownPipeline:
-    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_ok)
-    def test_successful_fetch(self, mock_fetch: object) -> None:
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_ok)
+    def test_successful_fetch(self, mock_fetch: AsyncMock) -> None:
         result = fetch_markdown("https://example.com/article", method="http")
         assert "jellyfish" in result
         assert "Mariana Trench" in result
@@ -104,64 +101,58 @@ class TestAsyncPath:
 
 class TestAutoEscalation:
     @patch("stealthfetch._core._has_any_browser", return_value=False)
-    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_blocked)
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_blocked)
     def test_blocked_without_browser_returns_result(
-        self, mock_fetch: object, mock_browser: object
+        self, mock_fetch: AsyncMock, mock_browser: object
     ) -> None:
         """When blocked but no browser, still attempts extraction."""
         result = fetch_markdown("https://example.com", method="auto")
         assert isinstance(result, str)
 
     @patch("stealthfetch._core._has_any_browser", return_value=False)
-    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_fail)
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_fail)
     def test_http_failure_without_browser_raises(
-        self, mock_fetch: object, mock_browser: object
+        self, mock_fetch: AsyncMock, mock_browser: object
     ) -> None:
         with pytest.raises(FetchError, match="Connection refused"):
             fetch_markdown("https://example.com", method="auto")
 
     @patch("stealthfetch._core._has_any_browser", return_value=True)
-    @patch(
-        "stealthfetch._browsers.fetch_browser",
-        return_value=_ARTICLE_HTML,
-    )
-    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_blocked)
+    @patch("stealthfetch._browsers.afetch_browser", new_callable=AsyncMock)
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_blocked)
     def test_blocked_with_browser_escalates(
-        self, mock_http: object, mock_bfetch: object, mock_has: object
+        self, mock_http: AsyncMock, mock_bfetch: AsyncMock, mock_has: object
     ) -> None:
+        mock_bfetch.return_value = _ARTICLE_HTML
         result = fetch_markdown("https://example.com", method="auto")
         assert "jellyfish" in result
 
     @patch("stealthfetch._core._has_any_browser", return_value=True)
-    @patch(
-        "stealthfetch._browsers.fetch_browser",
-        return_value=_ARTICLE_HTML,
-    )
-    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_fail)
+    @patch("stealthfetch._browsers.afetch_browser", new_callable=AsyncMock)
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_fail)
     def test_http_error_with_browser_escalates(
-        self, mock_http: object, mock_bfetch: object, mock_has: object
+        self, mock_http: AsyncMock, mock_bfetch: AsyncMock, mock_has: object
     ) -> None:
+        mock_bfetch.return_value = _ARTICLE_HTML
         result = fetch_markdown("https://example.com", method="auto")
         assert "jellyfish" in result
 
-    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_blocked)
-    def test_403_in_http_mode_raises_fetch_error(self, mock_fetch: object) -> None:
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_blocked)
+    def test_403_in_http_mode_raises_fetch_error(self, mock_fetch: AsyncMock) -> None:
         """method='http' with a 403 should raise FetchError, not silently return."""
         with pytest.raises(FetchError, match="HTTP 403"):
             fetch_markdown("https://example.com", method="http")
 
 
 class TestMethodForcing:
-    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_ok)
-    def test_force_http(self, mock_fetch: object) -> None:
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_ok)
+    def test_force_http(self, mock_fetch: AsyncMock) -> None:
         result = fetch_markdown("https://example.com", method="http")
         assert isinstance(result, str)
 
-    @patch(
-        "stealthfetch._browsers.fetch_browser",
-        return_value=_ARTICLE_HTML,
-    )
-    def test_force_browser(self, mock_fetch: object) -> None:
+    @patch("stealthfetch._browsers.afetch_browser", new_callable=AsyncMock)
+    def test_force_browser(self, mock_fetch: AsyncMock) -> None:
+        mock_fetch.return_value = _ARTICLE_HTML
         result = fetch_markdown("https://example.com", method="browser")
         assert "jellyfish" in result
 
@@ -200,8 +191,8 @@ class TestParameterValidation:
                 proxy={"username": "u", "password": "p"},
             )
 
-    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_ok)
-    def test_valid_proxy_accepted(self, mock_fetch: object) -> None:
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_ok)
+    def test_valid_proxy_accepted(self, mock_fetch: AsyncMock) -> None:
         result = fetch_markdown(
             "https://example.com",
             method="http",
@@ -239,15 +230,9 @@ class TestAsyncSessionLifecycle:
 
     @pytest.mark.asyncio
     async def test_response_data_read_inside_session(self) -> None:
-        """Verify response attributes are accessed inside the async with block.
-
-        We mock _afetch_http at a higher level and verify the fix structurally:
-        after the session closes, attempting to access response data on a real
-        curl_cffi response can fail. Our fix extracts into locals before close.
-        """
+        """Verify response attributes are accessed inside the async with block."""
         from stealthfetch._core import _afetch_http
 
-        # Build a mock response that tracks access order relative to session close
         access_log: list[str] = []
 
         class MockResponse:
@@ -284,7 +269,6 @@ class TestAsyncSessionLifecycle:
         assert text == "<html>OK</html>"
         assert status_code == 200
         assert content_type == "text/html"
-        # All three attributes were accessed (inside the session)
         assert "headers" in access_log
         assert "text" in access_log
         assert "status_code" in access_log
@@ -292,19 +276,98 @@ class TestAsyncSessionLifecycle:
 
 class TestBrowserEscalationPassesHeaders:
     @patch("stealthfetch._core._has_any_browser", return_value=True)
-    @patch("stealthfetch._browsers.fetch_browser", return_value=_ARTICLE_HTML)
-    @patch("stealthfetch._core._fetch_http", side_effect=_mock_http_blocked)
+    @patch("stealthfetch._browsers.afetch_browser", new_callable=AsyncMock)
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_blocked)
     def test_escalation_passes_headers_to_browser(
-        self, mock_http: object, mock_bfetch: MagicMock, mock_has: object
+        self, mock_http: AsyncMock, mock_bfetch: AsyncMock, mock_has: object
     ) -> None:
+        mock_bfetch.return_value = _ARTICLE_HTML
         custom_headers = {"Authorization": "Bearer token123"}
         fetch_markdown("https://example.com", method="auto", headers=custom_headers)
         _, kwargs = mock_bfetch.call_args
         assert kwargs["headers"] == custom_headers
 
-    @patch("stealthfetch._browsers.fetch_browser", return_value=_ARTICLE_HTML)
-    def test_browser_mode_passes_headers(self, mock_bfetch: MagicMock) -> None:
+    @patch("stealthfetch._browsers.afetch_browser", new_callable=AsyncMock)
+    def test_browser_mode_passes_headers(self, mock_bfetch: AsyncMock) -> None:
+        mock_bfetch.return_value = _ARTICLE_HTML
         custom_headers = {"X-Custom": "value"}
         fetch_markdown("https://example.com", method="browser", headers=custom_headers)
         _, kwargs = mock_bfetch.call_args
         assert kwargs["headers"] == custom_headers
+
+
+class TestRetry:
+    @patch("stealthfetch._core.asyncio.sleep", new_callable=AsyncMock)
+    @patch("stealthfetch._core._afetch_http", new_callable=AsyncMock)
+    def test_retries_on_transient_5xx(
+        self, mock_fetch: AsyncMock, mock_sleep: AsyncMock
+    ) -> None:
+        """5xx error retries and succeeds on second attempt."""
+        mock_fetch.side_effect = [
+            FetchError("https://example.com", reason="HTTP 500"),
+            (_ARTICLE_HTML, 200, "text/html"),
+        ]
+        result = fetch_markdown("https://example.com", method="http", retries=2)
+        assert "jellyfish" in result
+        mock_sleep.assert_called_once_with(1)  # 2^0 = 1s
+
+    @patch("stealthfetch._core.asyncio.sleep", new_callable=AsyncMock)
+    @patch("stealthfetch._core._afetch_http", new_callable=AsyncMock)
+    def test_retries_on_connection_error(
+        self, mock_fetch: AsyncMock, mock_sleep: AsyncMock
+    ) -> None:
+        """Connection errors are retryable."""
+        mock_fetch.side_effect = [
+            ConnectionError("refused"),
+            ConnectionError("refused"),
+            (_ARTICLE_HTML, 200, "text/html"),
+        ]
+        result = fetch_markdown("https://example.com", method="http", retries=3)
+        assert "jellyfish" in result
+        assert mock_sleep.call_count == 2
+        # Check exponential backoff: 1s, 2s
+        mock_sleep.assert_any_call(1)
+        mock_sleep.assert_any_call(2)
+
+    @patch("stealthfetch._core.asyncio.sleep", new_callable=AsyncMock)
+    @patch("stealthfetch._core._afetch_http", new_callable=AsyncMock)
+    def test_no_retry_on_4xx(
+        self, mock_fetch: AsyncMock, mock_sleep: AsyncMock
+    ) -> None:
+        """4xx errors are not retried."""
+        mock_fetch.side_effect = FetchError("https://example.com", reason="HTTP 403")
+        with pytest.raises(FetchError, match="HTTP 403"):
+            fetch_markdown("https://example.com", method="http", retries=3)
+        mock_sleep.assert_not_called()
+
+    @patch("stealthfetch._core._afetch_http", new_callable=_make_afetch_ok)
+    def test_retries_zero_is_no_retry(self, mock_fetch: AsyncMock) -> None:
+        """Default retries=0 works without any retry logic."""
+        result = fetch_markdown("https://example.com", method="http", retries=0)
+        assert "jellyfish" in result
+        assert mock_fetch.call_count == 1
+
+    @patch("stealthfetch._core.asyncio.sleep", new_callable=AsyncMock)
+    @patch("stealthfetch._core._afetch_http", new_callable=AsyncMock)
+    def test_exhausted_retries_raises(
+        self, mock_fetch: AsyncMock, mock_sleep: AsyncMock
+    ) -> None:
+        """All retries exhausted raises the last error."""
+        mock_fetch.side_effect = FetchError("https://example.com", reason="HTTP 502")
+        with pytest.raises(FetchError, match="HTTP 502"):
+            fetch_markdown("https://example.com", method="http", retries=2)
+        assert mock_fetch.call_count == 3  # 1 initial + 2 retries
+
+    @pytest.mark.asyncio
+    @patch("stealthfetch._core.asyncio.sleep", new_callable=AsyncMock)
+    @patch("stealthfetch._core._afetch_http", new_callable=AsyncMock)
+    async def test_async_retry(
+        self, mock_fetch: AsyncMock, mock_sleep: AsyncMock
+    ) -> None:
+        """Async path retries correctly too."""
+        mock_fetch.side_effect = [
+            FetchError("https://example.com", reason="HTTP 503"),
+            (_ARTICLE_HTML, 200, "text/html"),
+        ]
+        result = await afetch_markdown("https://example.com", method="http", retries=1)
+        assert "jellyfish" in result

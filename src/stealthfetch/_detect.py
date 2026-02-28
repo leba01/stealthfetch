@@ -64,14 +64,11 @@ def looks_blocked(
     Returns:
         True if the response appears to be a block page.
     """
-    if status_code in _BLOCKED_STATUS_CODES:
-        logger.debug("Blocked: HTTP %d", status_code)
-        return True
-
     # Only pattern-check HTML responses — non-HTML is not a block signal
     if content_type and "text/html" not in content_type.lower():
         return False
 
+    suspect_status = status_code in _BLOCKED_STATUS_CODES
     lower = html.lower()
 
     # Strong patterns: always check (vendor-specific, no false-positive risk)
@@ -80,11 +77,14 @@ def looks_blocked(
             logger.debug("Blocked: matched strong pattern '%s'", pattern)
             return True
 
-    # Weak patterns: only check small pages to avoid false positives
-    if len(html) < _THRESHOLD_CHARS:
+    # Weak patterns: check on small pages OR when status code is suspicious
+    # (a 403/429/503 + weak pattern is a strong signal; status code alone is not)
+    if len(html) < _THRESHOLD_CHARS or suspect_status:
         for pattern in _WEAK_PATTERNS:
             if pattern in lower:
-                logger.debug("Blocked: matched pattern '%s'", pattern)
+                logger.debug(
+                    "Blocked: matched pattern '%s' (status=%d)", pattern, status_code
+                )
                 return True
 
     return False
