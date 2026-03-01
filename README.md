@@ -140,6 +140,8 @@ pip install "stealthfetch[mcp]"
 }
 ```
 
+> **Fun fact:** I use StealthFetch as my web search MCP server inside Claude Code. It powers the very workflow that builds this project.
+
 ## API
 
 ### `fetch_markdown(url, **kwargs) -> str`
