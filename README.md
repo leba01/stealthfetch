@@ -3,7 +3,7 @@
 [![CI](https://github.com/leba01/stealthfetch/actions/workflows/ci.yml/badge.svg)](https://github.com/leba01/stealthfetch/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/stealthfetch)](https://pypi.org/project/stealthfetch/)
 [![Python](https://img.shields.io/pypi/pyversions/stealthfetch)](https://pypi.org/project/stealthfetch/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 URL in, LLM-ready markdown out.
 
@@ -23,27 +23,21 @@ StealthFetch doesn't reinvent the hard parts: [curl_cffi](https://github.com/lex
 URL
  │
  ▼
-┌───────────────────────────────────────────┐
-│  FETCH          curl_cffi                 │
-│                 Chrome TLS fingerprint    │
-│                 ↓ blocked?                │
-│                 auto-escalate to stealth  │
-│                 browser (Camoufox /       │
-│                 Patchright)               │
-└─────────────────┬─────────────────────────┘
-                  │
-┌─────────────────▼─────────────────────────┐
-│  EXTRACT        trafilatura               │
-│                 strips nav, ads,          │
-│                 boilerplate               │
-└─────────────────┬─────────────────────────┘
-                  │
-┌─────────────────▼─────────────────────────┐
-│  CONVERT        html-to-markdown (Rust)   │
-└─────────────────┬─────────────────────────┘
-                  │
-                  ▼
-               markdown
+┌──────────────────────────────────────────────────────────────────────┐
+│  FETCH        curl_cffi · Chrome TLS fingerprint                    │
+│               blocked? → auto-escalate to Camoufox / Patchright     │
+└───────────────────────────────┬──────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼──────────────────────────────────────┐
+│  EXTRACT      trafilatura · strips nav, ads, boilerplate            │
+└───────────────────────────────┬──────────────────────────────────────┘
+                                │
+┌───────────────────────────────▼──────────────────────────────────────┐
+│  CONVERT      html-to-markdown (Rust)                               │
+└───────────────────────────────┬──────────────────────────────────────┘
+                                │
+                                ▼
+                             markdown
 ```
 
 Each layer is one library call. The libraries do the hard work.
@@ -64,7 +58,7 @@ Most scraping tools — [including ones with 60-85k GitHub stars](https://www.bl
 
 ## Works On
 
-Most sites return clean markdown in **under a second**. Sites that fight back (Reddit, Amazon) get auto-escalated to a stealth browser — takes **5–8 seconds** but you don't have to think about it.
+Most sites return clean markdown in **under a second**. Sites behind Cloudflare, DataDome, or PerimeterX get detected and auto-escalated to a stealth browser — takes **5–8 seconds** but you don't have to think about it.
 
 | Site | What You Get |
 |------|-------------|
@@ -72,8 +66,23 @@ Most sites return clean markdown in **under a second**. Sites that fight back (R
 | Hacker News | Threads and comments |
 | Stack Overflow | Q&A with code blocks |
 | Medium | Articles — Cloudflare-protected, but no false-positive escalation (passive JS, not a block page) |
-| Reddit | Blocked by challenge page → auto-escalates to browser |
-| Amazon | Blocked by CAPTCHA → auto-escalates to browser |
+| Reddit | Blocked. Auto-escalates to browser, but still blocked. Needs proxy rotation (use [Firecrawl](https://github.com/mendableai/firecrawl)). |
+| Amazon | Blocked. Same story — CAPTCHA defeats the stealth browser too. |
+
+## Why Should I Use This Over Firecrawl?
+
+Every MCP tool gets injected into the system prompt. This is what that costs:
+
+| | StealthFetch | Firecrawl |
+|---|---|---|
+| MCP tools registered | 1 | 12 |
+| System prompt overhead | ~400 tokens | ~6,000–12,000 tokens |
+| Normal site latency | 0.4–0.5s | 2–7s |
+| Cloudflare/DataDome site | 0.5s (HTTP) / 5–8s (browser) | 2–7s |
+| Cost | Free, AGPL-3.0 | 500 pages/mo free, then $16+/mo |
+| Reddit/Amazon | Blocked | Works (proxy rotation) |
+
+StealthFetch is a local HTTP call. Firecrawl is a round-trip to their API. Firecrawl wins on proxy rotation at scale and structured extraction.
 
 ## Install
 
@@ -140,7 +149,7 @@ pip install "stealthfetch[mcp]"
 }
 ```
 
-> **Fun fact:** I use StealthFetch as my web search MCP server inside Claude Code. It powers the very workflow that builds this project.
+> **Fun fact:** I use StealthFetch as my web search MCP server inside Claude Code. 
 
 ## API
 
@@ -207,7 +216,7 @@ Python 3.10+. Tested on 3.10–3.13, Linux and macOS.
 
 Things that would make sense if this gets traction:
 
-- **Full site crawling** — follow links, respect sitemaps, return a structured set of pages instead of just one. Right now StealthFetch is single-page-in, markdown-out. Crawling is the natural next step if there's demand.
+- **Full site crawling** — follow links, respect sitemaps, return a structured set of pages instead of just one. Right now StealthFetch is single-page-in, markdown-out — it was built with AI coding agents in mind, where one page at a time is usually what you need.
 - **Homebrew tap** — `brew install stealthfetch` for people who don't want to think about Python
 - **Docker image** — bundle browser backends pre-installed, no `camoufox fetch` step, plays well with [Docker's MCP Catalog](https://docs.docker.com/ai/mcp-catalog-and-toolkit/)
 
@@ -215,4 +224,4 @@ Contributions welcome.
 
 ## License
 
-MIT
+AGPL-3.0 — free to use, modify, and distribute. If you run it as a service, you must open-source your stack. Commercial licenses available for organizations that need a different arrangement.
