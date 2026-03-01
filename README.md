@@ -56,19 +56,6 @@ Headless browsers are slow, heavy, and detectable in their own right. An HTTP re
 
 Most scraping tools — [including ones with 60-85k GitHub stars](https://www.bluerock.io/post/mcp-furi-microsoft-markitdown-vulnerabilities) — trust whatever URL you hand them. StealthFetch doesn't. A hostname that resolves to `127.0.0.1`? Rejected. A redirect chain that bounces through three domains and lands on a private IP? Caught. IPv6-mapped IPv4 bypasses, link-local addresses are all validated before the request goes out, and again after redirects resolve.
 
-## Works On
-
-Most sites return clean markdown in **under a second**. Sites behind Cloudflare, DataDome, or PerimeterX get detected and auto-escalated to a stealth browser — takes **5–8 seconds** but you don't have to think about it.
-
-| Site | What You Get |
-|------|-------------|
-| Wikipedia, Reuters, BBC News, TechCrunch | Articles and news — straight through |
-| Hacker News | Threads and comments |
-| Stack Overflow | Q&A with code blocks |
-| Medium | Articles — Cloudflare-protected, but no false-positive escalation (passive JS, not a block page) |
-| Reddit | Blocked. Auto-escalates to browser, but still blocked. Needs proxy rotation (use [Firecrawl](https://github.com/mendableai/firecrawl)). |
-| Amazon | Blocked. Same story — CAPTCHA defeats the stealth browser too. |
-
 ## Why Should I Use This Over Firecrawl?
 
 Every MCP tool gets injected into the system prompt. This is what that costs:
@@ -83,6 +70,19 @@ Every MCP tool gets injected into the system prompt. This is what that costs:
 | Reddit/Amazon | Blocked | Works (proxy rotation) |
 
 StealthFetch is a local HTTP call. Firecrawl is a round-trip to their API. Firecrawl wins on proxy rotation at scale and structured extraction.
+
+## Works On
+
+Most sites return clean markdown in **under a second**. Sites behind Cloudflare, DataDome, or PerimeterX get detected and auto-escalated to a stealth browser — takes **5–8 seconds** but you don't have to think about it.
+
+| Site | What You Get |
+|------|-------------|
+| Wikipedia, Reuters, BBC News, TechCrunch | Articles and news — straight through |
+| Hacker News | Threads and comments |
+| Stack Overflow | Q&A with code blocks |
+| Medium | Articles — Cloudflare-protected, but no false-positive escalation (passive JS, not a block page) |
+| Reddit | Blocked. Auto-escalates to browser, but still blocked. Needs proxy rotation (use [Firecrawl](https://github.com/mendableai/firecrawl)). |
+| Amazon | Blocked. Same story — CAPTCHA defeats the stealth browser too. |
 
 ## Install
 
