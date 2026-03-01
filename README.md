@@ -207,6 +207,7 @@ Python 3.10+. Tested on 3.10–3.13, Linux and macOS.
 
 Things that would make sense if this gets traction:
 
+- **Full site crawling** — follow links, respect sitemaps, return a structured set of pages instead of just one. Right now StealthFetch is single-page-in, markdown-out. Crawling is the natural next step if there's demand.
 - **Homebrew tap** — `brew install stealthfetch` for people who don't want to think about Python
 - **Docker image** — bundle browser backends pre-installed, no `camoufox fetch` step, plays well with [Docker's MCP Catalog](https://docs.docker.com/ai/mcp-catalog-and-toolkit/)
 
