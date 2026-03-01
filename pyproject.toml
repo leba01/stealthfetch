@@ -9,7 +9,7 @@ description = "URL in, LLM-ready markdown out. Stealth fetch with anti-bot bypas
 readme = "README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.10"
-authors = [{ name = "leba01" }]
+authors = [{ name = "Lucas Brennan-Almaraz" }]
 keywords = ["scraping", "markdown", "llm", "stealth", "anti-bot"]
 classifiers = [
     "Development Status :: 3 - Alpha",
