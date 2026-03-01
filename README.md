@@ -51,7 +51,7 @@ Most anti-bot systems give themselves away before you ever see a captcha. Stealt
 <details>
 <summary>Why this is harder than it sounds</summary>
 
-> The core problem is false positives. A news article *about* Cloudflare will contain phrases like "access denied" and "please wait" as normal prose. A Wikipedia page about CAPTCHAs will mention "verify you are human." If you check every page for these phrases, you'll escalate to a browser on perfectly good responses — wasting 5-8 seconds for nothing.
+> The core problem is false positives. A news article *about* Cloudflare will contain phrases like "access denied" and "please wait" as normal prose. A Wikipedia page about CAPTCHAs will mention "verify you are human." If you check every page for these phrases, you'll escalate to a browser on perfectly good responses; you waste 5-8 seconds for nothing.
 >
 > That's why the detection is split into two tiers. Strong patterns are things like JavaScript variable names (`_cf_chl_opt`), vendor-specific HTML attributes, and DOM structures that only exist on challenge pages. These are safe to check unconditionally because they never appear in real content. Weak patterns — the generic phrases — are only checked when the page is suspiciously small. A real article is almost never under 15k chars of HTML. A challenge page almost always is. The threshold isn't magic; it's the point where the false-positive rate drops to near zero.
 >
@@ -101,11 +101,11 @@ StealthFetch is a local HTTP call. Firecrawl is a round-trip to their API. Firec
 
 ## Works On
 
-Most sites return clean markdown in **under a second**. Sites behind Cloudflare, DataDome, or PerimeterX get detected and auto-escalated to a stealth browser — takes **5–8 seconds** but you don't have to think about it.
+Most sites return clean markdown in **under a second**. Sites behind Cloudflare, DataDome, or PerimeterX get detected and auto-escalated to a stealth browser which takes **5–8 seconds** but you don't have to think about it.
 
 | Site | What You Get |
 |------|-------------|
-| Wikipedia, Reuters, BBC News, TechCrunch | Articles and news — straight through |
+| Wikipedia, Reuters, BBC News, TechCrunch | Articles and news go straight through |
 | Hacker News | Threads and comments |
 | Stack Overflow | Q&A with code blocks |
 | Medium | Articles — Cloudflare-protected, but no false-positive escalation (passive JS, not a block page) |
@@ -146,9 +146,9 @@ stealthfetch https://example.com --header "Cookie: session=abc"
 
 ## MCP Server
 
-StealthFetch is an [MCP](https://modelcontextprotocol.io/) server — any MCP client (Claude Desktop, Claude Code, Cursor, etc.) can call it as a tool to fetch web pages as markdown.
+StealthFetch is an [MCP](https://modelcontextprotocol.io/) server. Any MCP client (Claude Desktop, Claude Code, Cursor, etc.) can call it as a tool to fetch web pages as markdown.
 
-No install needed — add this to your MCP client config:
+No install needed, just add this to your MCP client config:
 
 ```json
 {
