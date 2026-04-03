@@ -304,7 +304,7 @@ def _to_markdown(html: str) -> str:
     options = ConversionOptions(heading_style="atx", wrap=False, extract_metadata=False)
     result = convert(html, options)
     if isinstance(result, dict):
-        result = result.get("markdown") or result.get("content") or ""
+        return str(result.get("markdown") or result.get("content") or "")
     return str(result)
 
 
