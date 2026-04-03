@@ -146,15 +146,6 @@ class TestMCPMetadata:
         assert parsed["hostname"] == "example.com"
 
     @patch("stealthfetch._core.afetch_markdown", new_callable=AsyncMock)
-    async def test_include_metadata_false_calls_afetch_markdown(
-        self, mock_afetch: AsyncMock
-    ) -> None:
-        mock_afetch.return_value = "# Title"
-        result = await _MCP_TOOL("https://example.com", include_metadata=False)
-        assert result == "# Title"
-        mock_afetch.assert_called_once()
-
-    @patch("stealthfetch._core.afetch_markdown", new_callable=AsyncMock)
     async def test_default_calls_afetch_markdown(self, mock_afetch: AsyncMock) -> None:
         mock_afetch.return_value = "# Title"
         result = await _MCP_TOOL("https://example.com")

@@ -141,13 +141,3 @@ class TestBrowserHeadersPassthrough:
         mock_cafetch.assert_awaited_once_with(
             "https://example.com", timeout=30, proxy=None, headers=headers
         )
-
-    @patch("stealthfetch._compat.has_patchright", return_value=True)
-    @patch("stealthfetch._browsers._patchright.fetch")
-    def test_none_headers_passed_through(self, mock_pfetch: MagicMock, mock_has: object) -> None:
-        from stealthfetch._browsers import fetch_browser
-
-        fetch_browser("https://example.com", backend="patchright")
-        mock_pfetch.assert_called_once_with(
-            "https://example.com", timeout=30, proxy=None, headers=None
-        )

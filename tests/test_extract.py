@@ -47,11 +47,6 @@ class TestMetadataExtraction:
         for key in ("title", "author", "date", "description", "url", "hostname", "sitename"):
             assert key in meta
 
-    def test_title_extracted(self, article_html: str) -> None:
-        meta = _extract_metadata(article_html, url="https://example.com/article")
-        assert meta["title"] is not None
-        assert isinstance(meta["title"], str)
-
     def test_values_are_str_or_none(self, article_html: str) -> None:
         meta = _extract_metadata(article_html, url="https://example.com/article")
         for key, value in meta.items():

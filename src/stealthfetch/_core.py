@@ -203,16 +203,18 @@ async def _afetch_with_retry(
     for attempt in range(1 + retries):
         try:
             return await _afetch(
-                url, method=method, browser_backend=browser_backend,
-                timeout=timeout, proxy=proxy, headers=headers,
+                url,
+                method=method,
+                browser_backend=browser_backend,
+                timeout=timeout,
+                proxy=proxy,
+                headers=headers,
             )
         except Exception as exc:  # noqa: PERF203
             last_exc = exc
             if attempt < retries and _is_transient(exc):
                 delay = 2**attempt  # 1s, 2s, 4s, ...
-                logger.info(
-                    "Retry %d/%d after %ds (error: %s)", attempt + 1, retries, delay, exc
-                )
+                logger.info("Retry %d/%d after %ds (error: %s)", attempt + 1, retries, delay, exc)
                 await asyncio.sleep(delay)
             else:
                 raise
@@ -232,8 +234,13 @@ def _fetch(
     """Fetch HTML with auto-escalation (sync wrapper around _afetch)."""
     return asyncio.run(
         _afetch_with_retry(
-            url, method=method, browser_backend=browser_backend,
-            timeout=timeout, proxy=proxy, headers=headers, retries=retries,
+            url,
+            method=method,
+            browser_backend=browser_backend,
+            timeout=timeout,
+            proxy=proxy,
+            headers=headers,
+            retries=retries,
         )
     )
 
@@ -294,8 +301,11 @@ def _to_markdown(html: str) -> str:
     """Convert clean HTML to markdown via html-to-markdown."""
     from html_to_markdown import ConversionOptions, convert
 
-    options = ConversionOptions(heading_style="atx", wrap=False)
-    return convert(html, options)
+    options = ConversionOptions(heading_style="atx", wrap=False, extract_metadata=False)
+    result = convert(html, options)
+    if isinstance(result, dict):
+        result = result.get("markdown") or result.get("content") or ""
+    return str(result)
 
 
 # --- Pipeline helpers ---
@@ -333,7 +343,8 @@ def _pipeline_result(
 ) -> FetchResult:
     """Run extract→convert pipeline, return FetchResult with metadata."""
     markdown = _pipeline(
-        raw_html, url,
+        raw_html,
+        url,
         include_links=include_links,
         include_images=include_images,
         include_tables=include_tables,
@@ -394,12 +405,19 @@ def fetch_markdown(
     """
     _validate_params(url, method, browser_backend, proxy)
     raw_html = _fetch(
-        url, method=method, browser_backend=browser_backend,
-        timeout=timeout, proxy=proxy, headers=headers, retries=retries,
+        url,
+        method=method,
+        browser_backend=browser_backend,
+        timeout=timeout,
+        proxy=proxy,
+        headers=headers,
+        retries=retries,
     )
     return _pipeline(
-        raw_html, url,
-        include_links=include_links, include_images=include_images,
+        raw_html,
+        url,
+        include_links=include_links,
+        include_images=include_images,
         include_tables=include_tables,
     )
 
@@ -420,12 +438,20 @@ async def afetch_markdown(
     """Async version of fetch_markdown. Same signature and behavior."""
     _validate_params(url, method, browser_backend, proxy)
     raw_html = await _afetch_with_retry(
-        url, method=method, browser_backend=browser_backend,
-        timeout=timeout, proxy=proxy, headers=headers, retries=retries,
+        url,
+        method=method,
+        browser_backend=browser_backend,
+        timeout=timeout,
+        proxy=proxy,
+        headers=headers,
+        retries=retries,
     )
     return await asyncio.to_thread(
-        _pipeline, raw_html, url,
-        include_links=include_links, include_images=include_images,
+        _pipeline,
+        raw_html,
+        url,
+        include_links=include_links,
+        include_images=include_images,
         include_tables=include_tables,
     )
 
@@ -446,12 +472,19 @@ def fetch_result(
     """Like fetch_markdown, but returns FetchResult with markdown + page metadata."""
     _validate_params(url, method, browser_backend, proxy)
     raw_html = _fetch(
-        url, method=method, browser_backend=browser_backend,
-        timeout=timeout, proxy=proxy, headers=headers, retries=retries,
+        url,
+        method=method,
+        browser_backend=browser_backend,
+        timeout=timeout,
+        proxy=proxy,
+        headers=headers,
+        retries=retries,
     )
     return _pipeline_result(
-        raw_html, url,
-        include_links=include_links, include_images=include_images,
+        raw_html,
+        url,
+        include_links=include_links,
+        include_images=include_images,
         include_tables=include_tables,
     )
 
@@ -472,11 +505,19 @@ async def afetch_result(
     """Async version of fetch_result. Same signature and behavior."""
     _validate_params(url, method, browser_backend, proxy)
     raw_html = await _afetch_with_retry(
-        url, method=method, browser_backend=browser_backend,
-        timeout=timeout, proxy=proxy, headers=headers, retries=retries,
+        url,
+        method=method,
+        browser_backend=browser_backend,
+        timeout=timeout,
+        proxy=proxy,
+        headers=headers,
+        retries=retries,
     )
     return await asyncio.to_thread(
-        _pipeline_result, raw_html, url,
-        include_links=include_links, include_images=include_images,
+        _pipeline_result,
+        raw_html,
+        url,
+        include_links=include_links,
+        include_images=include_images,
         include_tables=include_tables,
     )
